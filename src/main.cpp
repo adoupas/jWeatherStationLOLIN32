@@ -53,6 +53,9 @@ static HardwareSerial console_serial(0); // UART 0 - CONSOLE
 
 #include <limits.h>
 
+#include <Adafruit_GFX.h>    // Core graphics library
+#include <Adafruit_ST7735.h> // Hardware-specific library
+
 //BME280 atmospheric pressure and hunidity sensor (temperature sensor is not used)
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BME280.h>
@@ -62,6 +65,11 @@ static HardwareSerial console_serial(0); // UART 0 - CONSOLE
 #define BME_CS 10
 #define SEALEVELPRESSURE_HPA (1019.50)
 #define ONBOARD_LED 5
+
+// TFT pins
+#define TFT_CS     14
+#define TFT_RST    33  
+#define TFT_DC     27
 
 Adafruit_BME280 bme280;
 
@@ -73,9 +81,18 @@ Adafruit_BME280 bme280;
 #include "telemetry.h"
 Telemetry telemetry;
 
+Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS,  TFT_DC, TFT_RST);
+
+
 //setup code runs once at the beginning
 void setup() {
 pinMode(ONBOARD_LED,OUTPUT);
+pinMode(TFT_CS, OUTPUT);
+tft.println("Scanning ...");
+
+
+tft.initR(INITR_144GREENTAB);
+tft.setTextWrap(false); // Allow text to run off right edge
 
   //console output
   Serial.begin(115200, SERIAL_8N1, 3, 1);//required for IotWebConfFactory serial monitoring in debug mode
@@ -306,6 +323,10 @@ void loop() {
   digitalWrite(ONBOARD_LED,LOW);
   telemetry.send_data_to_iot_server();
   telemetry.send_data_to_iot_server2();
+
+  String WeatherStationID = "ITHEHA119";
+  String WeatherStationPassword = "xZuJO2ir";
+  telemetry.send_data_to_wunderground( WeatherStationID,  WeatherStationPassword);
   digitalWrite(ONBOARD_LED,HIGH);
 
   console_serial.println("Delay for: " + (String)(DEVICE_DELAY_MS / 1000) + " sec");

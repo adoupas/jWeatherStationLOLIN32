@@ -62,6 +62,7 @@ class Telemetry
     
     void send_data_to_iot_server();
     void send_data_to_iot_server2();
+    void send_data_to_wunderground(String WeatherStationID, String WeatherStationPassword);
 
   private:
     String m_firmware_version = "";

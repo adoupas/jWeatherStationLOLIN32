@@ -45,12 +45,20 @@ PMS::DATA data;
 
 #include <limits.h>
 
+#include <Adafruit_GFX.h>    // Core graphics library
+#include <Adafruit_ST7735.h> // Hardware-specific library
+
 //BME280 atmospheric pressure and hunidity sensor (temperature sensor is not used)
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BME280.h>
 
 #define SEALEVELPRESSURE_HPA (1019.50)
 #define ONBOARD_LED 5
+
+// TFT pins
+#define TFT_CS     14
+#define TFT_RST    33  
+#define TFT_DC     27
 
 Adafruit_BME280 bme280;
 
@@ -61,6 +69,9 @@ Adafruit_BME280 bme280;
 //library that collects and sends data to the IoT server
 #include "telemetry.h"
 Telemetry telemetry;
+
+Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS,  TFT_DC, TFT_RST);
+
 
 //setup code runs once at the beginning
 

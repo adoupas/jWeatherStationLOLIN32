@@ -1,25 +1,5 @@
-/* ************************************************************************
- * Environmental Monitoring Station
- * (C) 2019 by Yiannis Bourkelis (https://github.com/YiannisBourkelis/)
- * (C) 2019 by Yiannis Grigoriadis
- * (C) 2019 by Kostas Laftsis
- * (C) 2019 by Marios Zikos
- *
- * This file is part of Environmental Monitoring Station.
- *
- * Environmental Monitoring Station is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * Environmental Monitoring Station is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with Environmental Monitoring Station.  If not, see <http://www.gnu.org/licenses/>.
- * ***********************************************************************/
+//Firmware version
+const char * FIRMWARE_VERSION = "1.1";
 
 //conditional variables for various purposes
 // #define DEBUG_FAST_LOOP //makes looping faster without big delays
@@ -34,21 +14,33 @@ static const unsigned int ADC_RESOLUTION = 4096;
 #include "IotWebConfFactory.h"
 
 #include "HardwareSerial.h"
-static HardwareSerial console_serial(0); // UART 0 - CONSOLE
-// static HardwareSerial MHZ19_serial(1); // UART 1
-// static HardwareSerial PMS7003_serial(2); // UART 2
 
-// #include <MHZ19.h>                                         // include main library
-// #define MHZ19_RX_PIN 33                                          // Rx pin which the MHZ19 Tx pin is attached to
-// #define MHZ19_TX_PIN 32                                          // Tx pin which the MHZ19 Rx pin is attached to
-// MHZ19 CO2_MHZ19;                                             // Constructor for MH-Z19 class
+#include <SPI.h>
+#define LOG_PERIOD 15000  //Logging period in milliseconds, recommended value 15000-60000.
+#define MAX_PERIOD 60000  //Maximum logging period without modifying this sketch
+
+unsigned long counts;     //variable for GM Tube events
+unsigned long cpm;        //variable for CPM
+unsigned int multiplier;  //variable for calculation CPM in this sketch
+unsigned long previousMillis;  //variable for time measurement
+
+static HardwareSerial console_serial(0); // UART 0 - CONSOLE
+static HardwareSerial MHZ19_serial(1); // UART 1
+static HardwareSerial PMS7003_serial(2); // UART 2
+
+#include <MHZ19.h>                                         // include main library
+#define MHZ19_RX_PIN 32                                          // Rx pin which the MHZ19 Tx pin is attached to
+#define MHZ19_TX_PIN 33                                          // Tx pin which the MHZ19 Rx pin is attached to
+MHZ19 CO2_MHZ19;                                             // Constructor for MH-Z19 class
 
 #include <PMS.h>
-// PMS pms(PMS7003_serial);
-// PMS::DATA data;
+#define PMS7003_RX_PIN 12
+#define PMS7003_TX_PIN 14
+PMS pms(PMS7003_serial);
+PMS::DATA data;
 
-//headers for reading temperature 
-#include <OneWire.h> 
+//headers for reading temperature with Dallas probe
+// #include <OneWire.h> 
 // #include <DallasTemperature.h>
 
 #include <limits.h>
@@ -56,10 +48,7 @@ static HardwareSerial console_serial(0); // UART 0 - CONSOLE
 //BME280 atmospheric pressure and hunidity sensor (temperature sensor is not used)
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BME280.h>
-#define BME_SCK 13
-#define BME_MISO 12
-#define BME_MOSI 11
-#define BME_CS 10
+
 #define SEALEVELPRESSURE_HPA (1019.50)
 #define ONBOARD_LED 5
 
@@ -74,61 +63,7 @@ Adafruit_BME280 bme280;
 Telemetry telemetry;
 
 //setup code runs once at the beginning
-void setup() {
-pinMode(ONBOARD_LED,OUTPUT);
 
-  //console output
-  Serial.begin(115200, SERIAL_8N1, 3, 1);//required for IotWebConfFactory serial monitoring in debug mode
-  console_serial.begin(115200, SERIAL_8N1, 3, 1);
-
-  //setup_pms7003();
-  // PMS7003_serial.begin(PMS::BAUD_RATE, SERIAL_8N1, 16, 17);
-  
-  //setup_co2();
-  // delay(100); //delay workaround for MHZ19 sensor readings in standalone power mode by costas laftsis delay and restart expert
-  // MHZ19_serial.begin(9600, SERIAL_8N1, MHZ19_RX_PIN, MHZ19_TX_PIN); // ESP32 Example
-  // CO2_MHZ19.begin(MHZ19_serial);                                // *Important, Pass your Stream reference 
-  // CO2_MHZ19.autoCalibration();                              // Turn auto calibration ON (disable with autoCalibration(false))
-
-
-  delay(1000);
-  
-  //MiCS-6814
-  //IotWebConfFactory::mydelay(1000);
-  // gas.begin(0x04);//the default I2C address of the slave is 0x04
-  // gas.powerOn();
-
-  // delay(1500);
-  
-  // BME280 sensor init
-  unsigned bme280_status;
-  // default settings
-  // (you can also pass in a Wire library object like &Wire2)
-  bme280_status = bme280.begin(0x76); //set bme280 address manually  
-  if (!bme280_status) {
-      console_serial.println("Could not find a valid BME280 sensor, check wiring, address, sensor ID!");
-      console_serial.print("SensorID was: 0x"); 
-      console_serial.println(bme280.sensorID(),16);
-      console_serial.print("        ID of 0xFF probably means a bad address, a BMP 180 or BMP 085\n");
-      console_serial.print("   ID of 0x56-0x58 represents a BMP 280,\n");
-      console_serial.print("        ID of 0x60 represents a BME 280.\n");
-      console_serial.print("        ID of 0x61 represents a BME 680.\n");
-  } else {
-      console_serial.println("BME280 init success");
-
-      /*
-      bme280.setSampling(Adafruit_BME280::MODE_FORCED,
-      Adafruit_BME280::SAMPLING_X1, // temperature sensor off
-      Adafruit_BME280::SAMPLING_X1, // pressure
-      Adafruit_BME280::SAMPLING_X1, // humidity
-      Adafruit_BME280::FILTER_OFF);
-      */
-  }
-
-  IotWebConfFactory::setup();
-
-  console_serial.println("Setup done! Entering environmental monitoring station main loop");
-}
 
 // void read_carbon_monoxide()
 // {
@@ -186,81 +121,157 @@ void read_BMEtemperature()
   console_serial.println("BME280 temperature is: " + (String)telemetry.getTemperatureCelcius() + " C");
 }
 
-// void read_pms7003_data()
-// {
-//   pms.wakeUp();
-//   #ifdef DEBUG_FAST_LOOP
-//   console_serial.println("Waking up PMS7003, wait 3 seconds for stable readings...");
-//   IotWebConfFactory::mydelay(3000);
-//   #else
-//   console_serial.println("Waking up PMS7003, wait 30 seconds for stable readings...");
-//   IotWebConfFactory::mydelay(30000);
-//   #endif
+void read_pms7003_data()
+{
+  pms.wakeUp();
+  #ifdef DEBUG_FAST_LOOP
+  console_serial.println("Waking up PMS7003, wait 3 seconds for stable readings...");
+  IotWebConfFactory::mydelay(3000);
+  #else
+  console_serial.println("Waking up PMS7003, wait 30 seconds for stable readings...");
+  IotWebConfFactory::mydelay(30000);
+  #endif
 
-//   console_serial.println("Send PMS7003 read request...");
-//   pms.requestRead();
+  console_serial.println("Send PMS7003 read request...");
+  pms.requestRead();
 
-//   if (pms.readUntil(data, 2000))
-//   {
-//     telemetry.setPMS7003_MP_1(data.PM_AE_UG_1_0);
-//     console_serial.print("PM 1.0 (ug/m3): ");
-//     console_serial.println(telemetry.getPMS7003_MP_1());
+  if (pms.readUntil(data, 2000))
+  {
+    telemetry.setPMS7003_MP_1(data.PM_AE_UG_1_0);
+    console_serial.print("PM 1.0 (ug/m3): ");
+    console_serial.println(telemetry.getPMS7003_MP_1());
     
-//     telemetry.setPMS7003_MP_2_5(data.PM_AE_UG_2_5);
-//     console_serial.print("PM 2.5 (ug/m3): ");
-//     console_serial.println(telemetry.getPMS7003_MP_2_5());
+    telemetry.setPMS7003_MP_2_5(data.PM_AE_UG_2_5);
+    console_serial.print("PM 2.5 (ug/m3): ");
+    console_serial.println(telemetry.getPMS7003_MP_2_5());
     
-//     telemetry.setPMS7003_MP_10(data.PM_AE_UG_10_0);
-//     console_serial.print("PM 10.0 (ug/m3): ");
-//     console_serial.println(telemetry.getPMS7003_MP_10());
-//   }
-//   else
-//   {
-//     console_serial.println("No PMS7003 data.");
-//     telemetry.setPMS7003_MP_1(-300);
-//     telemetry.setPMS7003_MP_2_5(-300);
-//     telemetry.setPMS7003_MP_10(-300);
-//   }
+    telemetry.setPMS7003_MP_10(data.PM_AE_UG_10_0);
+    console_serial.print("PM 10.0 (ug/m3): ");
+    console_serial.println(telemetry.getPMS7003_MP_10());
+  }
+  else
+  {
+    console_serial.println("No PMS7003 data.");
+    telemetry.setPMS7003_MP_1(-300);
+    telemetry.setPMS7003_MP_2_5(-300);
+    telemetry.setPMS7003_MP_10(-300);
+  }
 
-//   console_serial.println("PMS7003 going to sleep.");
-//   pms.sleep();
-// }
+  console_serial.println("PMS7003 going to sleep.");
+  pms.sleep();
+}
 
 
-// void read_mh_z19_co2_data()
-// {
-//   telemetry.setCarbonDioxide(CO2_MHZ19.getCO2());
+void read_mh_z19_co2_data()
+{
+  telemetry.setCarbonDioxide(CO2_MHZ19.getCO2());
   
-//   console_serial.print("CO2: ");
-//   console_serial.println(telemetry.getCarbonDioxide());
-// }
-
-uint8_t PercentageFromVoltage(float voltage) {
-  // LOLIN D32 (no voltage divider need already fitted to board.
-  // or NODEMCU ESP32 with 100K+100K voltage divider
-  uint8_t percentage;
-  percentage = 2808.3808 * pow(voltage, 4) - 43560.9157 * pow(voltage, 3) + 252848.5888 * pow(voltage, 2) - 650767.4615 * voltage + 626532.5703;
-  if (voltage > 4.19) percentage = 100;
-  else if (voltage <= 3.50) percentage = 0;
-
-  return percentage;
-}
-
-void showVoltagePercentage() {
-  float voltage = analogRead(35) / 4096.0 * 7.23;
-  uint8_t percentage = PercentageFromVoltage(voltage);
-
-  console_serial.println(String(voltage)+"V " + String(percentage)+"%");
+  console_serial.print("CO2: ");
+  console_serial.println(telemetry.getCarbonDioxide());
 }
 
 
+void setup_geiger()
+{
+  counts = 0;
+  cpm = 0;
+  multiplier = MAX_PERIOD / LOG_PERIOD;      //calculating multiplier, depend on your log period
+  attachInterrupt(0, geiger_tube_impulse, FALLING); //define external interrupts 
+}
+
+void geiger_tube_impulse(){       //subprocedure for capturing events from Geiger Kit
+  counts++;
+}
+
+void check_geiger()
+{
+  unsigned long currentMillis = millis();
+  if(currentMillis - previousMillis > LOG_PERIOD)
+  {
+    previousMillis = currentMillis;
+    cpm = counts * multiplier;
+    
+    Serial.print(cpm);
+    counts = 0;
+  }
+}
+
+void setup() {
+  
+  setup_geiger();
+
+  pinMode(ONBOARD_LED,OUTPUT);
+
+  //console output
+  Serial.begin(115200, SERIAL_8N1, 3, 1);//required for IotWebConfFactory serial monitoring in debug mode
+  console_serial.begin(115200, SERIAL_8N1, 3, 1);
+
+  //pass firmware version to telemetry object
+  telemetry.setFirmwareVersion(FIRMWARE_VERSION);
+
+  //setup_pms7003();
+  PMS7003_serial.begin(PMS::BAUD_RATE, SERIAL_8N1, PMS7003_RX_PIN, PMS7003_TX_PIN);
+  
+  //setup_co2();
+  delay(100); //delay workaround for MHZ19 sensor readings in standalone power mode 
+  MHZ19_serial.begin(9600, SERIAL_8N1, MHZ19_RX_PIN, MHZ19_TX_PIN); // ESP32 Example
+  CO2_MHZ19.begin(MHZ19_serial);                                // *Important, Pass your Stream reference 
+  CO2_MHZ19.autoCalibration();                              // Turn auto calibration ON (disable with autoCalibration(false))
 
 
+  delay(1000);
+
+   //MiCS-6814
+  // Start the Wire library and init MiCS-6814 sensor only if is detected
+  Wire.begin();
+  Wire.beginTransmission(0x04);
+  if (Wire.endTransmission() == 0) {
+   //MiCS-6814
+   //IotWebConfFactory::mydelay(1000);
+   gas.begin(0x04); //the default I2C address of the slave is 0x04
+   gas.powerOn();
+  }
+
+  // delay(1500);
+  
+  // BME280 sensor init
+  unsigned bme280_status;
+  // default settings
+  // (you can also pass in a Wire library object like &Wire2)
+  bme280_status = bme280.begin(0x76); //set bme280 address manually  
+  if (!bme280_status) {
+      console_serial.println("Could not find a valid BME280 sensor, check wiring, address, sensor ID!");
+      console_serial.print("SensorID was: 0x"); 
+      console_serial.println(bme280.sensorID(),16);
+      console_serial.print("        ID of 0xFF probably means a bad address, a BMP 180 or BMP 085\n");
+      console_serial.print("   ID of 0x56-0x58 represents a BMP 280,\n");
+      console_serial.print("        ID of 0x60 represents a BME 280.\n");
+      console_serial.print("        ID of 0x61 represents a BME 680.\n");
+  } else {
+      console_serial.println("BME280 init success");
+
+      /*
+      bme280.setSampling(Adafruit_BME280::MODE_FORCED,
+      Adafruit_BME280::SAMPLING_X1, // temperature sensor off
+      Adafruit_BME280::SAMPLING_X1, // pressure
+      Adafruit_BME280::SAMPLING_X1, // humidity
+      Adafruit_BME280::FILTER_OFF);
+      */
+  }
+
+  console_serial.println("Epaper display EPD initialized");
+
+
+  IotWebConfFactory::setup();
+
+  console_serial.println("Setup done! Entering environmental monitoring station main loop");
+}
 
 void loop() {
   console_serial.println("Begin loop");
-  showVoltagePercentage();
+  console_serial.println("Firmware version: " + FIRMWARE_VERSION);
 
+  // showVoltagePercentage();
 
   //wait 60sec to read next sensor data
   #ifdef DEBUG_FAST_LOOP
@@ -277,10 +288,10 @@ void loop() {
   telemetry.setTelemetryPort(IotWebConfFactory::getConfigPort());
 
   //reads pms7003 data
-  // read_pms7003_data();
+  read_pms7003_data();
   
   //reads co2 data
-  // read_mh_z19_co2_data();
+  read_mh_z19_co2_data();
 
   //reads the temperature from the sensor
   //read_temperature();
@@ -305,8 +316,13 @@ void loop() {
   //sends all sensor data to the IoT server
   digitalWrite(ONBOARD_LED,LOW);
   telemetry.send_data_to_iot_server();
-  telemetry.send_data_to_iot_server2();
+  // telemetry.send_data_to_iot_server2();
   digitalWrite(ONBOARD_LED,HIGH);
+
+
+
+  delay(60000);
+
 
   console_serial.println("Delay for: " + (String)(DEVICE_DELAY_MS / 1000) + " sec");
   console_serial.println("\n");

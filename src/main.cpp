@@ -3,116 +3,37 @@ const char * FIRMWARE_VERSION = "1.1";
 
 //conditional variables for various purposes
 // #define DEBUG_FAST_LOOP //makes looping faster without big delays
+#define ONBOARD_LED 5
 
-//the board should support an ADC resolution of 12bits
-//TODO: check if there is a constant to get the ADC resolution of the board at compile time
-static const unsigned int ADC_RESOLUTION = 4096;
+#include <limits.h> // limits for variable types (for ?)
 
-//TODO: remove pin 39 connection from PCB
-//#define MQ7_CO_PIN   39 //ADC GPIO34 - Carbon Monoxide Sensor
 #include <Arduino.h>
 #include "IotWebConfFactory.h"
+#include <string>
 
 #include "HardwareSerial.h"
-
-#include <SPI.h>
-#define LOG_PERIOD 15000  //Logging period in milliseconds, recommended value 15000-60000.
-#define MAX_PERIOD 60000  //Maximum logging period without modifying this sketch
-
-unsigned long counts;     //variable for GM Tube events
-unsigned long cpm;        //variable for CPM
-unsigned int multiplier;  //variable for calculation CPM in this sketch
-unsigned long previousMillis;  //variable for time measurement
-
 static HardwareSerial console_serial(0); // UART 0 - CONSOLE
-static HardwareSerial MHZ19_serial(1); // UART 1
+static HardwareSerial MHZ19_serial(1);   // UART 1
 static HardwareSerial PMS7003_serial(2); // UART 2
 
-#include <MHZ19.h>                                         // include main library
-#define MHZ19_RX_PIN 32                                          // Rx pin which the MHZ19 Tx pin is attached to
-#define MHZ19_TX_PIN 33                                          // Tx pin which the MHZ19 Rx pin is attached to
-MHZ19 CO2_MHZ19;                                             // Constructor for MH-Z19 class
+#include <MHZ19.h>                       // include CO2 sensor library
+#define MHZ19_RX_PIN 32                  // Rx pin which the MHZ19 Tx pin is attached to
+#define MHZ19_TX_PIN 33                  // Tx pin which the MHZ19 Rx pin is attached to
+MHZ19 CO2_MHZ19;                         // Constructor for MH-Z19 class
 
-#include <PMS.h>
+#include <PMS.h>                          // include dust sensor library
 #define PMS7003_RX_PIN 12
 #define PMS7003_TX_PIN 14
 PMS pms(PMS7003_serial);
 PMS::DATA data;
 
-//headers for reading temperature with Dallas probe
-// #include <OneWire.h> 
-// #include <DallasTemperature.h>
-
-#include <limits.h>
-
-#include <Adafruit_GFX.h>    // Core graphics library
-#include <Adafruit_ST7735.h> // Hardware-specific library
-
-//BME280 atmospheric pressure and hunidity sensor (temperature sensor is not used)
-#include <Adafruit_Sensor.h>
+#include <Adafruit_Sensor.h>            //include BME280 atmospheric pressure, hunidity, temperature sensor library
 #include <Adafruit_BME280.h>
-
 #define SEALEVELPRESSURE_HPA (1019.50)
-#define ONBOARD_LED 5
-
-// TFT pins
-#define TFT_CS     14
-#define TFT_RST    33  
-#define TFT_DC     27
-
 Adafruit_BME280 bme280;
 
-//MiCS-6814
-#include <Wire.h>
-// #include "MutichannelGasSensor.h"
-
-//library that collects and sends data to the IoT server
-#include "telemetry.h"
+#include "telemetry.h"                //library that collects and sends data to the IoT server
 Telemetry telemetry;
-
-Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS,  TFT_DC, TFT_RST);
-
-
-//setup code runs once at the beginning
-
-
-// void read_carbon_monoxide()
-// {
-//   telemetry.setCarbonMonoxide(gas.measure_CO());
-//   console_serial.println("Carbon Monoxide is: " + (String)telemetry.getCarbonMonoxide() +" ppm"); 
-// }
-
-// void read_nitrogen_dioxide()
-// {
-//   telemetry.setNitrogenDioxide(gas.measure_NO2());
-//   console_serial.println("Nitrogen Dioxide is: " + (String)telemetry.getNitrogenDioxide() +" ppm"); 
-// }
-
-// void read_hydrogen()
-// {
-//   telemetry.setHydrogen(gas.measure_H2());
-//   console_serial.println("Hydrogen is: " + (String)telemetry.getHydrogen() +" ppm"); 
-// }
-
-// void read_temperature()
-// {
-//   // temperature Data wire is plugged into pin 13 on the Arduino
-//   static const byte ONE_WIRE_BUS = 4;
-//   // 9 - 12 precision
-//   static const byte TEMPERATURE_PRECISION = 12;
-  
-//   // Setup a oneWire instance to communicate with any OneWire devices  
-//   // (not just Maxim/Dallas temperature ICs) 
-//   static OneWire oneWire(ONE_WIRE_BUS); 
-//   // Pass our oneWire reference to Dallas Temperature. 
-//   static DallasTemperature temperature_sensors(&oneWire);
-
-//   console_serial.println("Requesting temperatures...");
-//   temperature_sensors.requestTemperatures(); // Send the command to get temperature readings
-//   console_serial.print("Temperature is: ");
-//   telemetry.setTemperatureCelcius(temperature_sensors.getTempCByIndex(0));
-//   console_serial.println(telemetry.getTemperatureCelcius());
-// }
 
 void read_barometric_pressure()
 {
@@ -143,7 +64,7 @@ void read_pms7003_data()
   IotWebConfFactory::mydelay(30000);
   #endif
 
-  console_serial.println("Send PMS7003 read request...");
+  console_serial.println("Sending read request to PMS7003...");
   pms.requestRead();
 
   if (pms.readUntil(data, 2000))
@@ -168,10 +89,9 @@ void read_pms7003_data()
     telemetry.setPMS7003_MP_10(-300);
   }
 
-  console_serial.println("PMS7003 going to sleep.");
+  console_serial.println("Setting PMS7003 to sleep again.");
   pms.sleep();
 }
-
 
 void read_mh_z19_co2_data()
 {
@@ -181,76 +101,30 @@ void read_mh_z19_co2_data()
   console_serial.println(telemetry.getCarbonDioxide());
 }
 
-
-void setup_geiger()
+void setup() 
 {
-  counts = 0;
-  cpm = 0;
-  multiplier = MAX_PERIOD / LOG_PERIOD;      //calculating multiplier, depend on your log period
-  attachInterrupt(0, geiger_tube_impulse, FALLING); //define external interrupts 
-}
+  pinMode(ONBOARD_LED,OUTPUT);  //we'll use it to blink it every time we send data to server
 
-void geiger_tube_impulse(){       //subprocedure for capturing events from Geiger Kit
-  counts++;
-}
+  console_serial.begin(115200, SERIAL_8N1, 3, 1);  //start serial output for debugging
 
-void check_geiger()
-{
-  unsigned long currentMillis = millis();
-  if(currentMillis - previousMillis > LOG_PERIOD)
-  {
-    previousMillis = currentMillis;
-    cpm = counts * multiplier;
-    
-    Serial.print(cpm);
-    counts = 0;
-  }
-}
+  telemetry.setFirmwareVersion(FIRMWARE_VERSION); //pass firmware version to telemetry object
 
-void setup() {
+  //setup PMS7003 sensor
+  PMS7003_serial.begin(PMS::BAUD_RATE, SERIAL_8N1, -1,-1);
   
-  setup_geiger();
-
-  pinMode(ONBOARD_LED,OUTPUT);
-
-  //console output
-  Serial.begin(115200, SERIAL_8N1, 3, 1);//required for IotWebConfFactory serial monitoring in debug mode
-  console_serial.begin(115200, SERIAL_8N1, 3, 1);
-
-  //pass firmware version to telemetry object
-  telemetry.setFirmwareVersion(FIRMWARE_VERSION);
-
-  //setup_pms7003();
-  PMS7003_serial.begin(PMS::BAUD_RATE, SERIAL_8N1, PMS7003_RX_PIN, PMS7003_TX_PIN);
-  
-  //setup_co2();
+  //setup CO2 sensor
   delay(100); //delay workaround for MHZ19 sensor readings in standalone power mode 
-  MHZ19_serial.begin(9600, SERIAL_8N1, MHZ19_RX_PIN, MHZ19_TX_PIN); // ESP32 Example
+  MHZ19_serial.begin(9600, SERIAL_8N1, -1,-1); 
   CO2_MHZ19.begin(MHZ19_serial);                                // *Important, Pass your Stream reference 
   CO2_MHZ19.autoCalibration();                              // Turn auto calibration ON (disable with autoCalibration(false))
 
-
-  delay(1000);
-
-   //MiCS-6814
-  // Start the Wire library and init MiCS-6814 sensor only if is detected
-  Wire.begin();
-  Wire.beginTransmission(0x04);
-  if (Wire.endTransmission() == 0) {
-   //MiCS-6814
-   //IotWebConfFactory::mydelay(1000);
-   gas.begin(0x04); //the default I2C address of the slave is 0x04
-   gas.powerOn();
-  }
-
-  // delay(1500);
+  delay(1000);   // why?
   
-  // BME280 sensor init
+  // setup BME280 sensor
   unsigned bme280_status;
-  // default settings
-  // (you can also pass in a Wire library object like &Wire2)
   bme280_status = bme280.begin(0x76); //set bme280 address manually  
-  if (!bme280_status) {
+  if (!bme280_status) 
+  {
       console_serial.println("Could not find a valid BME280 sensor, check wiring, address, sensor ID!");
       console_serial.print("SensorID was: 0x"); 
       console_serial.println(bme280.sensorID(),16);
@@ -258,20 +132,11 @@ void setup() {
       console_serial.print("   ID of 0x56-0x58 represents a BMP 280,\n");
       console_serial.print("        ID of 0x60 represents a BME 280.\n");
       console_serial.print("        ID of 0x61 represents a BME 680.\n");
-  } else {
-      console_serial.println("BME280 init success");
-
-      /*
-      bme280.setSampling(Adafruit_BME280::MODE_FORCED,
-      Adafruit_BME280::SAMPLING_X1, // temperature sensor off
-      Adafruit_BME280::SAMPLING_X1, // pressure
-      Adafruit_BME280::SAMPLING_X1, // humidity
-      Adafruit_BME280::FILTER_OFF);
-      */
+  } 
+  else 
+  {
+      console_serial.println("BME280 initialization success");
   }
-
-  console_serial.println("Epaper display EPD initialized");
-
 
   IotWebConfFactory::setup();
 
@@ -280,15 +145,13 @@ void setup() {
 
 void loop() {
   console_serial.println("Begin loop");
-  console_serial.println("Firmware version: " + FIRMWARE_VERSION);
+  // console_serial.println("Firmware version: " + str(FIRMWARE_VERSION));
 
-  // showVoltagePercentage();
-
-  //wait 60sec to read next sensor data
+  //wait time in sec before reading sensors again
   #ifdef DEBUG_FAST_LOOP
   static unsigned long DEVICE_DELAY_MS = 5000; //5 seconds
   #else
-  static unsigned long DEVICE_DELAY_MS = 60000; //60 seconds
+  static unsigned long DEVICE_DELAY_MS = 300000; //300 seconds
   #endif
   
   IotWebConfFactory::loop();
@@ -298,44 +161,21 @@ void loop() {
   telemetry.setTelemetryToken(IotWebConfFactory::getConfigToken());
   telemetry.setTelemetryPort(IotWebConfFactory::getConfigPort());
 
-  //reads pms7003 data
   read_pms7003_data();
   
-  //reads co2 data
   read_mh_z19_co2_data();
 
-  //reads the temperature from the sensor
-  //read_temperature();
-
-  //reads the barometric pressure from the BME280 sensor
   read_barometric_pressure();
-
-  //reads the humidity from the BME280 sensor
   read_humidity();
-
   read_BMEtemperature();
   
-  // //reads the carbon monoxide value from the MiCS-6814 sensor
-  // read_carbon_monoxide();
-
-  // //reads the nitrogen dioxide value from the MiCS-6814 sensor
-  // read_nitrogen_dioxide();
-
-  // //reads the hydrogen value from the MiCS-6814 sensor
-  // read_hydrogen();
-  
-  //sends all sensor data to the IoT server
+  //send all sensor data to the IoT server
   digitalWrite(ONBOARD_LED,LOW);
   telemetry.send_data_to_iot_server();
   // telemetry.send_data_to_iot_server2();
   digitalWrite(ONBOARD_LED,HIGH);
 
-
-
-  delay(60000);
-
-
-  console_serial.println("Delay for: " + (String)(DEVICE_DELAY_MS / 1000) + " sec");
+  console_serial.println("Delaying for: " + (String)(DEVICE_DELAY_MS / 1000) + " sec before next read..");
   console_serial.println("\n");
   IotWebConfFactory::mydelay(DEVICE_DELAY_MS);
 }

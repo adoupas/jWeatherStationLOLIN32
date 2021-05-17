@@ -1,11 +1,19 @@
 
 // #include <LOLIN_EPD.h>
-// #include <Adafruit_GFX.h>
+// #include <SPI.h>
+// #include <Adafruit_GFX.h>    // Core graphics library
+// #include <Adafruit_ST7735.h> // Hardware-specific library
+
 /*D32 Pro*/
 // #define EPD_CS 14
 // #define EPD_DC 27
 // #define EPD_RST 33     // can set to -1 and share with microcontroller Reset!
 // #define EPD_BUSY -1    // can set to -1 to not use a pin (will wait a fixed delay)
+
+// TFT pins
+// #define TFT_CS     14
+// #define TFT_RST    33  
+// #define TFT_DC     27
 
 // LOLIN_IL3897 EPD(250, 122, EPD_DC, EPD_RST, EPD_CS, EPD_BUSY); //hardware SPI
 
@@ -30,6 +38,7 @@
 
 // setup()
 // {
+    // Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS,  TFT_DC, TFT_RST);
       // EPD.begin();
   // EPD.setTextSize(3);
   // EPD.clearBuffer();

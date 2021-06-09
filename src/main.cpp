@@ -1,14 +1,13 @@
-//Firmware version
-const char * FIRMWARE_VERSION = "1.1";
+const char * FIRMWARE_VERSION = "190.1";
 
-//conditional variables for various purposes
-// #define DEBUG_FAST_LOOP //makes looping faster without big delays
+#define DEBUG_FAST_LOOP //makes looping faster without big delays
 #define ONBOARD_LED 5
 
 #include <limits.h> // limits for variable types (for ?)
 
 #include <Arduino.h>
 #include "IotWebConfFactory.h"
+#include <IotWebConfUsing.h>
 #include <string>
 
 #include "HardwareSerial.h"
@@ -149,7 +148,7 @@ void loop() {
 
   //wait time in sec before reading sensors again
   #ifdef DEBUG_FAST_LOOP
-  static unsigned long DEVICE_DELAY_MS = 5000; //5 seconds
+  static unsigned long DEVICE_DELAY_MS = 15000; //15 seconds
   #else
   static unsigned long DEVICE_DELAY_MS = 300000; //300 seconds
   #endif

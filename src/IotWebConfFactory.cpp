@@ -186,6 +186,7 @@ void IotWebConfFactory::handleRoot()
   s += "Go to <a href='config'>configure page</a> to change values.";
   s += "</body></html>\n";
 
+  Serial.println("serving captive portal html");
   server.send(200, "text/html", s);
 }
 

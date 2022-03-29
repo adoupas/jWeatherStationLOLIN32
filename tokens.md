@@ -5,5 +5,11 @@ iotdlis.ddns.net    EnvStation      W1V5xRdXfg1qd9QhSEYI
 iotdlis.ddns.net    SoilHydrometer  O67vK10JI8lbCd4SeVOY
 curl -v -X POST -d "{\"temperature\": 21}" iotdlis.ddns.net:9090/api/v1/W1V5xRdXfg1qd9QhSEYI/telemetry --header "Content-Type:application/json"
 
-wundergroundDeviceID  INIPSA1
-wundergroungDeviceKEY aBfr1dXZ
+wunderground
+Nipsa:
+DeviceID:  INIPSA1       
+DeviceKEY: aBfr1dXZ
+
+Alexandroupoli:
+DeviceID:   IALEXA57
+DeviceKEY:  PeAn8nTK
